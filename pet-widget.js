@@ -486,6 +486,42 @@
   stage.addEventListener('pointerup', endDrag)
   stage.addEventListener('pointercancel', endDrag)
 
+  // 左键点击互动：单击随机触发摸头/戳一戳/摇尾巴（排除生气与眩晕）；
+  // 1.5 秒内连续点击 5 次 → 生气
+  var clickCount = 0
+  var clickResetTimer = null
+  var ANGRY_CLICK_COUNT = 5
+  var ANGRY_HOLD_MS = 1600
+
+  stage.addEventListener('click', function () {
+    if (drag && drag.moved) return
+    if (dragging) return
+    if (endTimer) { clearTimeout(endTimer); endTimer = null }
+    clickCount += 1
+    if (clickResetTimer) clearTimeout(clickResetTimer)
+    clickResetTimer = setTimeout(function () {
+      clickResetTimer = null
+      clickCount = 0
+    }, 1500)
+    if (clickCount >= ANGRY_CLICK_COUNT) {
+      // 连续点击 → 生气（angry 剪辑），停留一会后恢复
+      clickCount = 0
+      if (clickResetTimer) { clearTimeout(clickResetTimer); clickResetTimer = null }
+      interaction = { clip: 'error', angry: true }
+      render()
+      endTimer = setTimeout(function () {
+        endTimer = null
+        interaction = null
+        render()
+      }, ANGRY_HOLD_MS)
+      return
+    }
+    // 随机互动：摸头 / 戳一戳 / 摇尾巴
+    var clips = ['poke', 'head_pat', 'tail']
+    interaction = { clip: clips[Math.floor(Math.random() * clips.length)] }
+    render()
+  })
+
   // 图片加载失败时回退显示 🐋
   petImg.addEventListener('error', function () {
     petImg.style.display = 'none'
