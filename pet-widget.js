@@ -98,20 +98,20 @@
     '.dsh-pet-menu-sep{height:1px;background:var(--border-color,#e2e2e2);margin:5px 4px}',
     '.dsh-pet-restore{width:34px;height:34px;border-radius:50%;border:1px solid var(--border-color,#e2e2e2);background:var(--surface-color,#ffffff);box-shadow:0 4px 12px rgba(0,0,0,.16);cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center}',
     '@keyframes dshPetBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.02) translateY(-2px)}}',
-    '@keyframes dshPetThink{0%,100%{transform:rotate(0)}25%{transform:rotate(-3deg) translateY(-1px)}75%{transform:rotate(2deg) translateY(-1px)}}',
-    '@keyframes dshPetWork{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px) rotate(-1deg)}75%{transform:translateX(2px) rotate(1deg)}}',
-    '@keyframes dshPetWait{0%,100%{transform:rotate(0)}50%{transform:rotate(-4deg)}}',
+    '@keyframes dshPetThink{0%,100%{transform:rotate(0) translateY(0)}20%{transform:rotate(-4deg) translateY(-2px)}40%{transform:rotate(3deg) translateY(-1px)}60%{transform:rotate(-2deg) translateY(-3px)}80%{transform:rotate(2deg) translateY(-1px)}}',
+    '@keyframes dshPetWork{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px) rotate(-1.5deg)}50%{transform:translateX(2px) rotate(1deg)}75%{transform:translateX(-2px) rotate(0)}}',
+    '@keyframes dshPetWait{0%,100%{transform:rotate(0)}15%{transform:rotate(-5deg)}35%{transform:rotate(5deg)}55%{transform:rotate(-5deg)}75%{transform:rotate(5deg)}}',
     '@keyframes dshPetBounce{0%,100%{transform:translateY(0)}30%{transform:translateY(-14px) scale(1.05)}60%{transform:translateY(0)}80%{transform:translateY(-6px)}}',
     '@keyframes dshPetShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}',
-    '@keyframes dshPetDizzy{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}',
+    '@keyframes dshPetDizzy{0%{transform:rotate(0)}25%{transform:rotate(8deg)}75%{transform:rotate(-8deg)}100%{transform:rotate(0)}}',
     '@keyframes dshPetFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}',
     '.dsh-pet-motion-breathe{animation:dshPetBreathe 2.6s ease-in-out infinite}',
-    '.dsh-pet-motion-think{animation:dshPetThink 2.2s ease-in-out infinite}',
-    '.dsh-pet-motion-work{animation:dshPetWork 1.6s ease-in-out infinite}',
-    '.dsh-pet-motion-wait{animation:dshPetWait 2.8s ease-in-out infinite}',
+    '.dsh-pet-motion-think{animation:dshPetThink 3.4s ease-in-out infinite}',
+    '.dsh-pet-motion-work{animation:dshPetWork 1.8s ease-in-out infinite}',
+    '.dsh-pet-motion-wait{animation:dshPetWait 3.6s ease-in-out infinite}',
     '.dsh-pet-motion-bounce{animation:dshPetBounce 1.1s ease-in-out infinite}',
     '.dsh-pet-motion-shake{animation:dshPetShake .7s ease-in-out infinite}',
-    '.dsh-pet-motion-dizzy{animation:dshPetDizzy 2.4s linear infinite}',
+    '.dsh-pet-motion-dizzy{animation:dshPetDizzy .9s ease-in-out infinite}',
     '.dsh-pet-motion-float{animation:dshPetFloat 2.4s ease-in-out infinite}',
     '@media (prefers-reduced-motion: reduce){.dsh-pet-root [class*="dsh-pet-motion-"]{animation:none}}'
   ].join('\n')
@@ -246,8 +246,10 @@
     var key
     if (dragging) key = 'dragging'
     else if (interaction) key = interaction.clip
-    else if (pulseActive) key = MANIFEST.stateMap[pulseActive.state] || 'idle'
-    else {
+    else if (pulseActive) {
+      // 工具调用失败脉冲带 dizzy 标记 → 眩晕剪辑（更贴合情绪）；其余按状态映射
+      key = pulseActive.dizzy ? 'error_dizzy' : (MANIFEST.stateMap[pulseActive.state] || 'idle')
+    } else {
       key = MANIFEST.stateMap[baseState] || 'idle'
       if (baseState === 'WORKING' && base && base.activity && MANIFEST.workingActivityMap[base.activity]) {
         key = MANIFEST.workingActivityMap[base.activity]
@@ -402,7 +404,11 @@
     var delay = cfg.microDelay[0] + Math.random() * (cfg.microDelay[1] - cfg.microDelay[0])
     microTimer = setTimeout(function () {
       microTimer = null
-      var micros = MANIFEST.idleMicroClips || ['blink', 'glance']
+      // 微动作按状态贴合情绪：思考时眨眼（若有所思），工作时环顾（专注间隙张望），空闲两者皆可
+      var micros
+      if (resolved.baseState === 'THINKING') micros = ['blink']
+      else if (resolved.baseState === 'WORKING') micros = ['glance']
+      else micros = MANIFEST.idleMicroClips || ['blink', 'glance']
       interaction = { clip: micros[Math.floor(Math.random() * micros.length)] }
       render()
     }, delay)
