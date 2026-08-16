@@ -269,6 +269,8 @@ return {
         return [{
           kind: 'pulse',
           state: S.ERROR,
+          // 工具调用失败 → 眩晕（dizzy 剪辑），更贴合「被工具结果砸晕」的情绪
+          dizzy: true,
           ttlMs: 1800,
           resumeState: selection.record.state,
           message: statusCopy('toolError', event.seq),
@@ -501,6 +503,7 @@ return {
               message: message.message,
               detail: message.detail,
               sound: message.sound || null,
+              dizzy: message.dizzy === true,
               until: Date.now() + (message.ttlMs || 2200),
             }
             // 竞态保护：带提示音的脉冲（目标完成/等待确认）未过期时，
