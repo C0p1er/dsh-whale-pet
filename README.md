@@ -1,70 +1,106 @@
-# 鲸鱼娘桌宠 · DSH Web 版 🐋
+# DSH 桌宠（大肥鱼）· Web 版插件
 
-由 **DeepSeek Harness 真实工作状态驱动**的 Agent 伴侣桌宠，运行在 DSH Web 界面右下角。
-任务完成播放提示音、需要确认时播放确认音；支持拖动、右键设置菜单；**页面刷新后自动恢复**。
+把官方 `dsh-dafeiyu`（大肥鱼）桌宠移植到 DSH Web 界面右下角：
+由 DSH Agent 的**真实工作事件**驱动动作，任务完成时播放提示音。
+**页面刷新后桌宠自动恢复**（页面级小部件，由 Host 注入 index.html）。
 
-本项目是官方 `dsh-dafeiyu`（大肥鱼）桌宠的 Web 移植版：复用同一份角色素材与状态机设计，
-把「Windows 桌面原生窗口」替换为「DSH Web 页面内的小部件」。
+## 效果
 
-## 功能
+- 右下角悬浮显示大肥鱼（透明 PNG，来自 `DSH桌宠.tar`，形象原封未动）。
+- 随 Agent 状态切换动作：
+  | 状态 | 动作 | 触发事件 |
+  | --- | --- | --- |
+  | 空闲 IDLE | 待机（呼吸动画，随机眨眼/环顾） | 无任务时 |
+  | 思考 THINKING | 思考姿势 | `turn/start`、`assistant/chunk`、`tool/result` 后 |
+  | 工作 WORKING | 扫地 / 走动（按工具类型区分搜索、命令等） | `tool/call`（搜索→左右走、命令→右向走、编辑/测试→扫地） |
+  | 等待 WAITING | 说话姿势 | `turn/end` reason=blocked |
+  | 完成 SUCCESS | 开心跳跃 + **播放提示音** | 任务真正完成（见下方规则） |
+  | 出错 ERROR | 生气 / 眩晕 | `tool/result` 带 error、`turn/end` 异常 |
+- 状态气泡显示：当前文案、项目名、真实待办进度（已完成 x/y 步）。
+- 多 Session 时按优先级展示：等待确认 > 出错 > 工作 > 思考 > 空闲。
+- 互动：**按住拖动** 换位置；**右键** 打开设置菜单（菜单位置自动适应屏幕边缘，
+  宠物靠近屏幕边缘时自动翻转方向，保证菜单完整显示）。
+- **固定画布尺寸**（238×260，`object-fit: contain`）：所有动作帧的像素尺寸不同
+  （实测宽 168~223px 不等），渲染时统一在固定画布内等比例容纳，任何动作切换宠物大小都不变。
+- **左键点击互动**：单击随机触发 摸头 / 戳一戳 / 摇尾巴（排除生气与眩晕剪辑）；
+  1.5 秒内连续点击 5 次则触发生气（愤怒表情，短暂停留后恢复）。
 
-| 状态 | 动作 | 触发事件 |
+## 提示音体系（v8）
+
+| 提示音 | 触发时机 | 音频 |
 | --- | --- | --- |
-| 空闲 IDLE | 待机（呼吸动画，随机眨眼/环顾） | 无任务时 |
-| 思考 THINKING | 思考姿势 | `turn/start`、`assistant/chunk`、`tool/result` 后 |
-| 工作 WORKING | 扫地 / 走动（按工具类型区分） | `tool/call` |
-| 等待 WAITING | 说话姿势 | `turn/end` reason=blocked |
-| 完成 SUCCESS | 开心跳跃 + 完成提示音 | 任务完成（final answer） |
-| 出错 ERROR | 生气 / 眩晕 | `tool/result` 带 error、`turn/end` 异常 |
+| **完成提示音** | **final answer 时刻，每个任务完成仅响一次**：无目标会话在每轮 `turn/end(completed)`（Agent 给出最终答复）时响一次；有目标会话仅在目标 `complete` 时响一次 | `finished sound.mp3`（来自 音频素材 目录） |
+| **确认提示音** | 需要权限/做选择：`approval/asked` 会话事件（审批弹窗出现，主通道）与 `turn/end(blocked)`（Agent 等待确认）；`approval/request` 为冗余通道 | `interruption sound.mp3` |
 
-- **提示音体系**：
-  - 完成提示音：仅在 Agent 给出 final answer（`turn/end(completed)`）时响**一次**；
-    有目标（goal）的会话仅在目标 `complete` 时响一次；
-  - 确认提示音：`approval/asked` 会话事件（审批弹窗出现，主通道）与 `turn/end(blocked)`（等待确认/选择）时响；`approval/request` 为冗余通道；
-  - 每个脉冲携带自增 `seq`，浏览器端只在新脉冲到达时播放一次，杜绝重复响铃。
-- **气泡**：仅执行任务时显示一行状态文案，频率受活跃程度冷却期控制；空闲时不弹窗。
-- **窗口适配**：位置绑定窗口边缘（右/下偏移），窗口缩放自动跟随；窗口过小时自动缩小宠物保证完整可见。
-- **设置**（右键菜单，localStorage 持久化）：提示音开关、音量、透明度、活跃程度（微动作频率 + 气泡冷却期）、角色大小、复位位置、隐藏宠物。
+- **仅响一次**：每个脉冲携带自增 `seq`，浏览器只在新脉冲到达时播放一次——修复了「回合结束后残留脉冲随每个事件（回合开始/思考块/工具结果）反复重播」的 bug；
+- 竞态保护：带提示音的脉冲未过期前，不会被紧随其后的静音脉冲覆盖，保证提示音一定触发；
+- 浏览器自动播放策略通过首次点击解锁（`pointerdown` 时 `unlockAudio()`），未解锁时的待播提示音会在解锁后立即补播。
+
+## 设置（右键菜单，localStorage 持久化）
+
+右键点击桌宠打开设置菜单：
+
+| 设置项 | 范围 | 说明 |
+| --- | --- | --- |
+| 提示音 | 开 / 关 | 完成提示音与确认提示音总开关 |
+| 提示音量 | 0–100% | 两种提示音共用的音量 |
+| 透明度 | 30–100% | 桌宠整体透明度 |
+| 活跃程度 | 安静 / 标准 / 活泼 | 控制微动作频率与气泡弹出频率（见下方） |
+| 角色大小 | 60–160% | 桌宠缩放（叠加窗口自适应缩放） |
+| 复位位置 | — | 回到默认的右下角边缘位置 |
+| 隐藏宠物 | — | 隐藏后右下角出现 🐟 恢复按钮 |
+
+窗口缩小到宠物无法完整显示时自动等比缩小（最小 20%），始终完整可见。
+
+## 活跃程度
+
+| 模式 | 微动作间隔 | 气泡显示时长 | 气泡冷却 |
+| --- | --- | --- | --- |
+| 安静 | 9–17 秒 | 5.0 秒 | 18 秒 |
+| 标准 | 3–8 秒 | 3.6 秒 | 10 秒 |
+| 活泼 | 1–4 秒 | 2.6 秒 | 6 秒 |
+
+- 空闲时不弹气泡、不做微动作以外的打扰；
+- 气泡只显示单行状态文案，冷却期内状态变化只原位更新内容，不重新弹出。
+
+## 运行方式
+
+1. 把本仓库放入 DSH 插件目录（含 `pet-plugin.host.js` 与 `assets/`）。
+2. 修改 `pet-plugin.host.js` 顶部 `ASSET_ROOT` 指向本地素材目录（或直接用仓库内 `assets/`）。
+3. 启动 DSH Web 后桌宠自动出现在右下角；刷新页面依然保留。
 
 ## 架构
 
-- **Host 端**（`pet-plugin.host.js`，动态 Cordis 插件）：
-  - 监听 `session/event`（global）与 `session/disposed`，事件类型：`turn/start`、`step/start`、`assistant/chunk`、`assistant/message`、`tool/call`、`tool/result`、`todo/write`、`approval/asked`、`goal/change`、`turn/end`；
-  - 状态归约器移植自 `dsh-dafeiyu/src/companion-reducer.js`（含中文文案）；
-  - 通过 `webServer` 暴露 `/plugins/dsh-pet/state.json`（状态快照）与 `/plugins/dsh-pet/assets/*`（PNG/MP3 原始字节）；
-  - 通过 `tapIndex` 把 `pet-widget.js` 注入每次 index.html 响应。
-- **页面小部件**（`pet-widget.js`）：纯原生 JS，不依赖框架/槽位；轮询状态接口渲染动画；
-  设置存 `localStorage`；页面刷新后自动恢复。
+- `pet-plugin.host.js` | Host 半区：监听 `session/event` / `session/disposed`（`{global:true}`），
+  用 CompanionReducer 归约出桌面宠物状态，通过 `/plugins/dsh-pet/state.json` 暴露；
+  素材路由 `/plugins/dsh-pet/assets/*` 原样输出 PNG/MP3；`tapIndex` 注入小部件脚本。
+- `pet-widget.js` | 页面级小部件：桌宠渲染、动画、互动、右键设置菜单、提示音（注入 index.html）。
 
-## 安装（DSH 动态插件）
+### 状态归约（CompanionReducer）
 
-在 DSH 会话中：
+- `turn/start` → THINKING；`assistant/*` 无工具时保持 THINKING；
+- `tool/call` → WORKING（按工具名归约为 searching/editing/testing/commanding）；
+- `tool/result` 带 error → ERROR 脉冲（`dizzy:true` → 眩晕剪辑），无错误则回到 THINKING；
+- `todo/write` → 更新气泡里的真实进度（已完成 x/y 步）；
+- `approval/asked` → WAITING + 确认提示音（等待批准）；
+- `turn/end` → completed → SUCCESS 脉冲；blocked → WAITING + 确认提示音；aborted → IDLE；error/max-tokens → ERROR；
+- `goal/change` → 有目标会话在目标 complete 时响完成音（此时 `turn/end` 静音，保证每任务只响一次）。
+- 多 Session 优先级：WAITING(60) > ERROR(50) > WORKING(30) > THINKING(20) > IDLE(0)，同优先级按最近更新。
 
-1. 使用 `cordis_define` 定义插件（`code.host` 为 `pet-plugin.host.js` 内容）；
-2. 使用 `cordis_run` 激活；
-3. 刷新 Web 页面一次（注入脚本生效），右下角出现鲸鱼娘；
-4. 之后任意刷新都会自动恢复。
+### 技术要点
 
-> 素材根目录与 `pet-widget.js` 路径在 Host 端 `ASSET_ROOT` / `WIDGET_PATH` 常量中配置。
+- 页面级小部件 + `tapIndex` 注入：桌宠不依赖动态插件 Client 半区挂载，**刷新页面自动恢复**；
+- `webServer.register` 路由 + `fs.readBytes` 读素材，Host 端字节缓存；小部件脚本不缓存（热更新）；
+- 提示音仅当脉冲 `sound=true` 且开关开启时播放；浏览器自动播放策略通过首次点击解锁；
+- 设置存 `localStorage`，右键菜单实时生效；时钟用页面原生 `setInterval/setTimeout`（页面上下文允许）；
+- 位置存右/下边缘偏移量（非绝对坐标）：窗口缩放时宠物自动跟随窗口边缘，不会被挤出视口；
+- 窗口过小时按视口等比缩放（宽 ≤ 35% 视口、高 ≤ 50% 视口，最小 20%）。
 
-## 文件说明
+## 素材许可
 
-```
-pet-plugin.host.js    Host 端插件源码（状态机 + HTTP 路由 + 页面注入）
-pet-widget.js         页面级小部件（渲染、动画、提示音、右键设置菜单）
-assets/
-  pet/                角色动作帧（50 张 PNG，见 ASSET_LICENSE.md）
-  finished.mp3        完成提示音
-  interrupt.mp3       确认提示音
-  pet-manifest.json   动画清单（帧表/帧间隔/动作映射）
-ASSET_LICENSE.md      角色视觉素材许可声明（素材不在 MIT 范围内）
-LICENSE               MIT（仅代码）
-```
+PNG 形象来自官方 `DSH桌宠.tar`，仅作个人/学习用途的移植展示；音频来自 音频素材 目录。
+详见 `ASSET_LICENSE.md`。
 
-## 许可
+## 已知限制
 
-- **代码**：MIT（本项目代码基于 MIT 许可的 `dsh-dafeiyu` 移植，见 `LICENSE`）；
-- **角色视觉素材**：`assets/pet/` 下的 PNG 帧为粉丝二创素材，**不适用 MIT 代码许可**，来源与使用边界见 `ASSET_LICENSE.md`；
-- **音频**：`finished.mp3` / `interrupt.mp3` 为项目自备素材。
-
-本项目为粉丝非官方项目，与 DeepSeek 无隶属或背书关系；相关名称、标志与角色权益归其各自所有者。
+- 官方版的 DSH 设置页配置、位置持久化等桌面专属能力由右键菜单 + localStorage 替代。
