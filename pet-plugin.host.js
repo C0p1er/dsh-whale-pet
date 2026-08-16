@@ -196,6 +196,25 @@ return {
             return this.toolResult(record, event)
           case 'todo/write':
             return this.todo(record, event)
+          case 'approval/asked': {
+            // 审批请求（权限/选择弹窗出现）→ 响「确认」提示音
+            // 走 session/event 通道（approval/request host 事件作用域不可靠）
+            const data = event.data || {}
+            const toolName = String(data.toolName || 'tool')
+            this.update(record, S.WAITING, { phase: 'approval-asked', stage: '等待确认', toolName, message: statusCopy('waiting', event.seq) })
+            const rendered = this.render()
+            const selection = this.select()
+            this.remember(selection)
+            return rendered.concat([{
+              kind: 'pulse',
+              state: S.WAITING,
+              sound: 'interrupt',
+              ttlMs: 3000,
+              phase: 'approval-asked',
+              message: statusCopy('waiting', event.seq),
+              detail: '需要批准：' + toolName,
+            }])
+          }
           case 'goal/change': {
             const data = event.data || {}
             const operation = String(data.operation || '')
@@ -325,8 +344,8 @@ return {
         return [{
           kind: 'pulse',
           state: S.SUCCESS,
-          // 完成提示音 = final answer 时刻：
-          //  - 有目标的任务：只在目标 complete 时响（此处静音）；
+          // v8：final answer 时刻——
+          //  - 有目标的任务：只在目标 complete 时响（此处静音，防每轮响）；
           //  - 无目标会话：每轮 turn/end(completed) 即 Agent 给出最终答复，响一次完成音
           sound: record.hasGoal !== true ? 'completion' : null,
           ttlMs: 2200,
@@ -438,6 +457,23 @@ return {
     }
     let pulse = null
     let pulseSeq = 0
+    // 诊断：确认音触发计数（定位「做选择/要权限时不响」问题）
+    let interruptCount = 0
+    let lastInterruptAt = null
+    let lastInterruptSource = null
+
+    function emitInterrupt(source, message, detail, ttlMs) {
+      // 触发计数在 fold 中统一统计（blocked 与 approval 两条路径共用）
+      fold([{
+        kind: 'pulse',
+        state: S.WAITING,
+        sound: 'interrupt',
+        ttlMs: ttlMs || 3000,
+        phase: source,
+        message: message || statusCopy('waiting', 7),
+        detail: detail || 'DSH · 需要确认',
+      }])
+    }
 
     function fold(messages) {
       if (Array.isArray(messages) && messages.length > 0) {
@@ -454,6 +490,11 @@ return {
             if (message.progress) next.progress = message.progress
             base = next
           } else if (message.kind === 'pulse') {
+            if (message.sound === 'interrupt') {
+              interruptCount += 1
+              lastInterruptAt = Date.now()
+              lastInterruptSource = message.phase || 'pulse'
+            }
             const nextPulse = {
               seq: ++pulseSeq,
               state: message.state,
@@ -491,18 +532,10 @@ return {
       }
     }, { global: true })
 
-    // 权限申请（sandbox 升级、批准等）→ 响「确认」提示音
+    // 权限申请（sandbox 升级、批准等）→ 响「确认」提示音（冗余通道，主通道为 approval/asked 会话事件）
     ctx.on('approval/request', (req, next) => {
       try {
-        fold([{
-          kind: 'pulse',
-          state: S.WAITING,
-          sound: 'interrupt',
-          ttlMs: 3000,
-          phase: 'approval',
-          message: statusCopy('waiting', 7),
-          detail: 'DSH · 需要权限确认',
-        }])
+        emitInterrupt('approval', statusCopy('waiting', 7), 'DSH · 需要权限确认', 3000)
       } catch (error) {
         console.error('dsh-pet approval pulse failed:', error)
       }
@@ -529,6 +562,13 @@ return {
           progress: base.progress || null,
         },
         pulse,
+        // 诊断字段：确认音触发统计
+        diag: {
+          interruptCount,
+          lastInterruptAt,
+          lastInterruptSource,
+          pulseSeq,
+        },
       }
     }
 

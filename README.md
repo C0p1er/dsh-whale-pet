@@ -20,7 +20,7 @@
 - **提示音体系**：
   - 完成提示音：仅在 Agent 给出 final answer（`turn/end(completed)`）时响**一次**；
     有目标（goal）的会话仅在目标 `complete` 时响一次；
-  - 确认提示音：`turn/end(blocked)`（等待确认/选择）与 `approval/request`（权限申请）时响；
+  - 确认提示音：`approval/asked` 会话事件（审批弹窗出现，主通道）与 `turn/end(blocked)`（等待确认/选择）时响；`approval/request` 为冗余通道；
   - 每个脉冲携带自增 `seq`，浏览器端只在新脉冲到达时播放一次，杜绝重复响铃。
 - **气泡**：仅执行任务时显示一行状态文案，频率受活跃程度冷却期控制；空闲时不弹窗。
 - **窗口适配**：位置绑定窗口边缘（右/下偏移），窗口缩放自动跟随；窗口过小时自动缩小宠物保证完整可见。
@@ -29,7 +29,7 @@
 ## 架构
 
 - **Host 端**（`pet-plugin.host.js`，动态 Cordis 插件）：
-  - 监听 `session/event`（global）与 `session/disposed`，事件类型：`turn/start`、`step/start`、`assistant/chunk`、`assistant/message`、`tool/call`、`tool/result`、`todo/write`、`goal/change`、`turn/end`；
+  - 监听 `session/event`（global）与 `session/disposed`，事件类型：`turn/start`、`step/start`、`assistant/chunk`、`assistant/message`、`tool/call`、`tool/result`、`todo/write`、`approval/asked`、`goal/change`、`turn/end`；
   - 状态归约器移植自 `dsh-dafeiyu/src/companion-reducer.js`（含中文文案）；
   - 通过 `webServer` 暴露 `/plugins/dsh-pet/state.json`（状态快照）与 `/plugins/dsh-pet/assets/*`（PNG/MP3 原始字节）；
   - 通过 `tapIndex` 把 `pet-widget.js` 注入每次 index.html 响应。
